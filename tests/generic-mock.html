@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Generic form mock</title></head>
+<body style="font:14px system-ui;padding:16px">
+<button id="run">Run autofill (= extension click)</button>
+<form id="f">
+  <label for="first_name">First Name *</label><input id="first_name" name="first_name" required><br>
+  <label for="last_name">Last Name *</label><input id="last_name" name="last_name" required><br>
+  <label for="email">Email *</label><input id="email" type="email" name="email" required><br>
+  <label for="phone">Phone</label><input id="phone" type="tel" name="phone"><br>
+  <label for="resume">Resume/CV</label><input id="resume" type="file" name="resume"><br>
+  <label for="li">LinkedIn Profile</label><input id="li" name="urls[LinkedIn]"><br>
+  <label for="company">Current Company Name</label><input id="company" name="org"><br>
+  <label for="school">School</label><input id="school" name="school"><br>
+  <label for="auth">Are you authorized to work in the US? *</label><select id="auth" required><option value="">--</option><option value="1">Yes</option><option value="0">No</option></select><br>
+  <label for="why">Why do you want to work here? *</label><textarea id="why" required></textarea>
+</form>
+<script>
+const SAMPLE = {
+  profile: { name: { first: 'Jane', last: 'Doe', full: 'Jane Doe' }, email: 'jane@example.edu', phone: '(555) 123-4567',
+    address: { line1: '', city: 'Austin', state: 'TX', postal: '' }, links: { linkedin: 'linkedin.com/in/jane', github: '', portfolio: '' },
+    education: [{ school: 'State University', degree: 'B.S. Computer Science', gpa: '3.9' }], experience: [], projects: [] },
+  answers: [{ q: 'authori[sz]ed to work', a: '^yes' }],
+  fullPdf: { name: 'resume.pdf', b64: btoa('%PDF-1.4 fake') },
+};
+window.chrome = { storage: { local: { get: async () => SAMPLE } } };
+const inject = src => new Promise(r => { const s = document.createElement('script'); s.src = src + '?' + Date.now(); s.onload = r; document.body.appendChild(s); });
+document.getElementById('run').onclick = async () => { await inject('../content/fill-utils.js'); await inject('../content/generic.js'); };
+</script>
+</body>
+</html>

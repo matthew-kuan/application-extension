@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Job Application Autofill – Settings</title>
+<style>
+  :root { --bg: #f7f7f8; --card: #fff; --text: #1d1d1f; --muted: #6b6b70; --line: #dcdce0; --accent: #0b63ce; --ok: #1a7f37; --err: #c62828; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #18181a; --card: #222226; --text: #ececf0; --muted: #a0a0a8; --line: #3a3a40; --accent: #5aa2ff; --ok: #5cc27a; --err: #ff7b72; } }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 0 0 8px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-top: 16px; }
+  .muted { color: var(--muted); }
+  label { display: inline-flex; gap: 6px; align-items: center; margin-right: 16px; }
+  textarea { width: 100%; box-sizing: border-box; min-height: 260px; font: 12px/1.4 ui-monospace, Consolas, monospace; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+  input[type=number] { width: 56px; }
+  button { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 7px 14px; font: inherit; cursor: pointer; margin-top: 8px; }
+  .status { margin-left: 8px; }
+  .ok { color: var(--ok); } .err { color: var(--err); }
+  .row { margin-top: 8px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Job Application Autofill</h1>
+  <p class="muted">Click the extension icon (or Alt+Shift+F) on an application page. On Workday it fills each page, clicks Save and Continue, and stops at Review. You submit yourself.</p>
+
+  <section class="card">
+    <h2>1. Main resume (full)</h2>
+    <input type="file" id="fullFile" accept="application/pdf">
+    <div class="row muted" id="fullInfo">No main resume yet.</div>
+  </section>
+
+  <section class="card">
+    <h2>2. Upload a different resume for applications?</h2>
+    <label><input type="radio" name="useTailored" value="no"> No, attach and fill the main resume</label>
+    <label><input type="radio" name="useTailored" value="yes"> Yes</label>
+    <div id="tailoredBox" hidden>
+      <div class="row"><input type="file" id="tailoredFile" accept="application/pdf"></div>
+      <div class="row muted" id="tailoredInfo">No tailored resume yet.</div>
+      <div class="row"><label>Extra bullets per entry from the main resume <input type="number" id="extra" min="0" max="10" value="2"></label></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>3. What gets filled</h2>
+    <p class="muted">Edit anything the parser got wrong, and add your street address and ZIP (not on your resume). Uploading a PDF or changing step 2 rebuilds this from the PDFs; your address is kept.</p>
+    <textarea id="profile" spellcheck="false"></textarea>
+    <button id="saveProfile">Save</button><span class="status" id="profileStatus"></span>
+  </section>
+
+  <section class="card">
+    <h2>4. Question answers</h2>
+    <p class="muted">Each entry: <code>q</code> is a pattern matched against the question text, <code>a</code> is a pattern matched against the answer options (or typed into text boxes). Empty <code>a</code> means "leave it for me" and the question is highlighted in yellow. Fill in work authorization and sponsorship yourself.</p>
+    <textarea id="answers" spellcheck="false"></textarea>
+    <button id="saveAnswers">Save</button><span class="status" id="answersStatus"></span>
+  </section>
+</main>
+<script type="module" src="options.js"></script>
+</body>
+</html>
