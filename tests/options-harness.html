@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Settings harness</title></head>
+<body>
+<script>
+// Fake extension storage so options.html can run outside the extension.
+const mem = {};
+window.chrome = {
+  runtime: { getURL: p => '../' + p },
+  storage: { local: {
+    get: async keys => keys == null ? structuredClone(mem) : Object.fromEntries((Array.isArray(keys) ? keys : [keys]).filter(k => k in mem).map(k => [k, structuredClone(mem[k])])),
+    set: async o => Object.assign(mem, structuredClone(o)),
+  } },
+};
+(async () => {
+  const html = await (await fetch('../options.html')).text();
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  document.head.append(...doc.head.querySelectorAll('style'));
+  document.body.innerHTML = doc.body.innerHTML.replace(/<script[^>]*><\/script>/g, '');
+  await import('../options.js');
+})();
+</script>
+</body>
+</html>

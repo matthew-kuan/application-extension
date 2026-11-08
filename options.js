@@ -1,23 +1,9 @@
 import * as pdfjs from './lib/pdf.min.mjs';
 import { pdfToLines, parseResume } from './parse.js';
 import { mergeProfiles } from './merge.js';
+import { QUESTIONS, DEFAULT_QA, buildAnswers } from './answers.js';
 
 pdfjs.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('lib/pdf.worker.min.mjs');
-
-const DECLINE = "decline|not (wish|want)|prefer not|don't wish|do not wish";
-const DEFAULT_ANSWERS = [
-  { q: 'authori[sz]ed to work|legally (eligible|permitted|able) to work|right to work', a: '' },
-  { q: 'sponsor|visa', a: '' },
-  { q: 'how did you hear|source', a: '' },
-  { q: 'previously (worked|been employed)|former (employee|worker|contractor)|currently work for', a: '^no' },
-  { q: '18 years|age of 18|at least 18', a: '^yes' },
-  { q: 'phone device type|phone type', a: 'mobile|cell' },
-  { q: 'gender|\\bsex\\b', a: DECLINE },
-  { q: 'hispanic|latino', a: DECLINE },
-  { q: 'race|ethnic', a: DECLINE },
-  { q: 'veteran', a: DECLINE },
-  { q: 'disability', a: "do not want|don't want|" + DECLINE },
-];
 
 const $ = id => document.getElementById(id);
 const store = chrome.storage.local;
@@ -31,6 +17,12 @@ function toB64(buf) {
 
 const summary = p => `${p.name.full || '(no name)'}: ${p.experience.length} experiences, ${p.projects.length} projects, ${p.education.length} schools`;
 
+function saved() {
+  $('saved').textContent = 'Saved';
+  clearTimeout(saved.t);
+  saved.t = setTimeout(() => ($('saved').textContent = ''), 1500);
+}
+
 async function readPdf(input) {
   const file = input.files[0];
   const buf = await file.arrayBuffer();
@@ -39,36 +31,83 @@ async function readPdf(input) {
 }
 
 async function rebuild() {
-  const s = await store.get(['fullProfile', 'tailoredProfile', 'useTailored', 'extraBullets', 'profile']);
+  const s = await store.get(['fullProfile', 'tailoredProfile', 'useTailored', 'extraBullets', 'address', 'qa']);
   if (!s.fullProfile) return;
-  const next = mergeProfiles(s.useTailored ? s.tailoredProfile : null, s.fullProfile, s.extraBullets ?? 2);
-  next.address = { ...next.address, line1: s.profile?.address?.line1 || '', postal: s.profile?.address?.postal || '' };
-  await store.set({ profile: next });
-  $('profile').value = JSON.stringify(next, null, 2);
+  const profile = mergeProfiles(s.useTailored ? s.tailoredProfile : null, s.fullProfile, s.extraBullets ?? 2);
+  await store.set({ profile });
+  // city/state from the resume until you type your own
+  if (!s.address?.city && !s.address?.state) {
+    await store.set({ address: { ...s.address, city: profile.address.city, state: profile.address.state } });
+  }
+  await render();
 }
 
-function flash(id, msg, ok = true) {
-  $(id).textContent = msg;
-  $(id).className = 'status ' + (ok ? 'ok' : 'err');
-}
-
-async function load() {
+// Settings form <- storage
+async function render() {
   const s = await store.get(null);
-  if (!s.answers) await store.set({ answers: s.answers = DEFAULT_ANSWERS });
+  const qa = { ...DEFAULT_QA, ...s.qa };
+  const address = { country: 'United States of America', ...s.address };
   if (s.fullProfile) $('fullInfo').textContent = `${s.fullPdf.name} — ${summary(s.fullProfile)}`;
   if (s.tailoredProfile) $('tailoredInfo').textContent = `${s.tailoredPdf.name} — ${summary(s.tailoredProfile)}`;
   document.querySelector(`input[name=useTailored][value=${s.useTailored ? 'yes' : 'no'}]`).checked = true;
   $('tailoredBox').hidden = !s.useTailored;
   $('extra').value = s.extraBullets ?? 2;
+  for (const el of document.querySelectorAll('[data-addr]')) el.value = address[el.dataset.addr] || '';
+  for (const el of document.querySelectorAll('[data-qa]')) el.value = qa[el.dataset.qa] ?? '';
+  $('skills').value = qa.skills ?? (s.profile?.skillList || []).join(', ');
+  $('certs').value = qa.certs ?? (s.profile?.certifications || []).join('\n');
   $('profile').value = s.profile ? JSON.stringify(s.profile, null, 2) : '';
-  $('answers').value = JSON.stringify(s.answers, null, 2);
 }
+
+// Settings form -> storage (answers rebuilt every time)
+async function saveForm() {
+  const s = await store.get(['qa']);
+  const qa = { ...DEFAULT_QA, ...s.qa };
+  for (const el of document.querySelectorAll('[data-qa]')) qa[el.dataset.qa] = el.value;
+  const address = {};
+  for (const el of document.querySelectorAll('[data-addr]')) address[el.dataset.addr] = el.value.trim();
+  await store.set({ qa, address, answers: buildAnswers(qa) });
+  saved();
+}
+
+function buildQuestions() {
+  for (const [key, label, opts] of QUESTIONS) {
+    const span = document.createElement('span');
+    span.textContent = label;
+    span.id = 'q-' + key;
+    let input;
+    if (opts === 'text') {
+      input = Object.assign(document.createElement('input'), { type: 'text' });
+    } else {
+      input = document.createElement('select');
+      for (const o of opts) input.add(new Option(o === '' ? 'Leave for me' : o === 'Decline' ? 'Decline to answer' : o, o));
+    }
+    input.dataset.qa = key;
+    input.setAttribute('aria-labelledby', span.id);
+    $('questions').append(span, input);
+  }
+}
+
+buildQuestions();
+document.addEventListener('change', e => {
+  if (e.target.matches('[data-qa], [data-addr]')) saveForm();
+});
+
+$('skills').onchange = async () => {
+  const s = await store.get(['qa']);
+  await store.set({ qa: { ...DEFAULT_QA, ...s.qa, skills: $('skills').value } });
+  saved();
+};
+$('certs').onchange = async () => {
+  const s = await store.get(['qa']);
+  await store.set({ qa: { ...DEFAULT_QA, ...s.qa, certs: $('certs').value } });
+  saved();
+};
 
 $('fullFile').onchange = async () => {
   try {
     const { pdf, profile } = await readPdf($('fullFile'));
     await store.set({ fullPdf: pdf, fullProfile: profile });
-    $('fullInfo').textContent = `${pdf.name} — ${summary(profile)}`;
     await rebuild();
   } catch (e) { $('fullInfo').textContent = 'Could not read that PDF: ' + e.message; }
 };
@@ -77,15 +116,13 @@ $('tailoredFile').onchange = async () => {
   try {
     const { pdf, profile } = await readPdf($('tailoredFile'));
     await store.set({ tailoredPdf: pdf, tailoredProfile: profile });
-    $('tailoredInfo').textContent = `${pdf.name} — ${summary(profile)}`;
     await rebuild();
   } catch (e) { $('tailoredInfo').textContent = 'Could not read that PDF: ' + e.message; }
 };
 
 for (const r of document.querySelectorAll('input[name=useTailored]')) r.onchange = async () => {
-  const useTailored = r.value === 'yes';
-  $('tailoredBox').hidden = !useTailored;
-  await store.set({ useTailored });
+  $('tailoredBox').hidden = r.value !== 'yes';
+  await store.set({ useTailored: r.value === 'yes' });
   await rebuild();
 };
 
@@ -94,22 +131,21 @@ $('extra').onchange = async () => {
   await rebuild();
 };
 
-function saveJson(textId, key, statusId, check) {
-  return async () => {
-    try {
-      const v = JSON.parse($(textId).value);
-      check(v);
-      await store.set({ [key]: v });
-      flash(statusId, 'Saved');
-    } catch (e) { flash(statusId, e.message, false); }
-  };
-}
-$('saveProfile').onclick = saveJson('profile', 'profile', 'profileStatus', v => {
-  if (!v.name || !Array.isArray(v.experience) || !Array.isArray(v.projects) || !Array.isArray(v.education)) throw new Error('Needs name, experience, projects, education');
-});
-$('saveAnswers').onclick = saveJson('answers', 'answers', 'answersStatus', v => {
-  if (!Array.isArray(v) || v.some(x => typeof x.q !== 'string' || typeof x.a !== 'string')) throw new Error('Needs a list of {"q": "...", "a": "..."}');
-  v.forEach(x => { new RegExp(x.q, 'i'); new RegExp(x.a || '.', 'i'); }); // reject broken patterns now, not mid-application
-});
+$('saveProfile').onclick = async () => {
+  try {
+    const v = JSON.parse($('profile').value);
+    if (!v.name || !Array.isArray(v.experience) || !Array.isArray(v.projects) || !Array.isArray(v.education)) throw new Error('Needs name, experience, projects, education');
+    await store.set({ profile: v });
+    $('profileStatus').textContent = 'Saved';
+    $('profileStatus').className = 'status ok';
+  } catch (e) {
+    $('profileStatus').textContent = e.message;
+    $('profileStatus').className = 'status err';
+  }
+};
 
-load();
+(async () => {
+  const s = await store.get(['qa', 'answers']);
+  if (!s.qa) await store.set({ qa: DEFAULT_QA, answers: buildAnswers(DEFAULT_QA) });
+  await render();
+})();

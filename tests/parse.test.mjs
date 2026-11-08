@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseResume, parseDates, rowToLine, sectionOf } from '../parse.js';
@@ -76,17 +75,38 @@ test('merge adds up to n non-duplicate bullets from the matching full entry', ()
   assert.equal(mergeProfiles(structuredClone(tailored), full, 0).experience[0].bullets.length, 1);
 });
 
-const FULL = join(homedir(), 'Downloads', 'matthew_kuan_resume_full.pdf');
-test('smoke: real full resume', { skip: !existsSync(FULL) && 'full resume PDF not found' }, async () => {
+const FULL = process.env.RESUME_PDF || '';
+test('smoke: real full resume', { skip: !(FULL && existsSync(FULL)) && 'set RESUME_PDF to run' }, async () => {
   const lib = new URL('../lib/', import.meta.url);
   const pdfjs = await import(new URL('pdf.min.mjs', lib));
   pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdf.worker.min.mjs', lib).href;
   const { pdfToLines } = await import(pathToFileURL(join(import.meta.dirname, '..', 'parse.js')));
   const p = parseResume(await pdfToLines(pdfjs, new Uint8Array(readFileSync(FULL))));
-  assert.equal(p.education.length, 2);
-  assert.equal(p.experience.filter(e => e.section === 'Research Experience').length, 3);
-  assert.equal(p.experience.filter(e => e.section === 'Professional Experience').length, 5);
-  assert.equal(p.projects.length, 16);
-  assert.ok(p.experience.every(e => e.org && e.bullets.length));
-  assert.ok(p.experience[0].bullets[2].includes('cut device failure rate from 30% to 15%'));
+  assert.ok(p.name.full && p.email, 'name and email from the header');
+  assert.ok(p.education.length && p.education.every(e => e.school));
+  assert.ok(p.experience.length && p.experience.every(e => e.title && e.org && e.bullets.length));
+  assert.ok(p.projects.every(pr => pr.name && pr.bullets.length));
+});
+
+test('skills list and certifications come from the resume', async () => {
+  const { skillList, certsFromBullets } = await import('../parse.js');
+  assert.deepEqual(skillList({ A: 'Python, Microsoft Office (Excel, Word), MATLAB (coursework)', B: 'python, Docker' }), ['Python', 'Microsoft Office', 'MATLAB', 'Docker']);
+  assert.deepEqual(certsFromBullets({ experience: [{ bullets: ['Pitched a memo; earned the Example Program certificate.'] }], projects: [] }), ['Example Program Certificate']);
+});
+
+test('settings answers become matchers', async () => {
+  const { buildAnswers, DEFAULT_QA } = await import('../answers.js');
+  const list = buildAnswers({ ...DEFAULT_QA, auth: 'Yes', custom: 'favorite color = Blue' });
+  const find = q => list.find(x => new RegExp(x.q, 'i').test(q));
+  assert.equal(find('What is your favorite color?').text, 'Blue');
+  assert.ok(new RegExp(find('Are you legally authorized to work in the US?').a, 'i').test('Yes'));
+  assert.equal(find('Will you require visa sponsorship?'), undefined); // left for you by default
+  const hear = find('How did you hear about us?');
+  assert.deepEqual(hear.pick, ['Job Sites > LinkedIn', 'Career Website']);
+  assert.ok(new RegExp(find('Gender').a, 'i').test('I decline to self-identify'));
+  assert.ok(new RegExp(find('Disability status').a, 'i').test('I do not want to answer'));
+  assert.ok(new RegExp(find('Phone Device Type').a, 'i').test('Mobile'));
+  const vet = buildAnswers({ ...DEFAULT_QA, veteran: 'Not a protected veteran' }).find(x => /veteran/.test(x.q));
+  assert.ok(new RegExp(vet.a, 'i').test('I am not a protected veteran'));
+  assert.ok(!new RegExp(vet.a, 'i').test('I identify as one or more of the classifications of protected veteran'));
 });

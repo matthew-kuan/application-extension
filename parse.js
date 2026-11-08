@@ -11,7 +11,8 @@ const SECTIONS = [
   [/^(research |professional |work |relevant |industry )?experience$/i, 'experience'],
   [/^(leadership|activities|leadership & activities|leadership & involvement|involvement|extracurriculars?)$/i, 'experience'],
   [/^(technical |personal |selected |academic )?projects$/i, 'projects'],
-  [/^(poster presentations|presentations|publications|honors.*|awards.*|certifications?|relevant coursework|coursework|interests)$/i, 'other'],
+  [/^(licenses (&|and) )?certifications?( (&|and) licenses)?$/i, 'certs'],
+  [/^(poster presentations|presentations|publications|honors.*|awards.*|relevant coursework|coursework|interests)$/i, 'other'],
 ];
 
 export function sectionOf(text) {
@@ -105,7 +106,7 @@ export function parseResume(lines) {
     name: { first: '', last: '', full: '' }, email: '', phone: '',
     address: { line1: '', city: '', state: '', postal: '', country: 'United States of America' },
     links: { linkedin: '', github: '', portfolio: '' },
-    education: [], skills: {}, experience: [], projects: [],
+    education: [], skills: {}, experience: [], projects: [], skillList: [], certifications: [],
   };
   let i = 0;
   const head = [];
@@ -122,6 +123,10 @@ export function parseResume(lines) {
     const bullet = /^[•●▪◦‣∙*]\s*/.test(t) ? t.replace(/^[•●▪◦‣∙*]\s*/, '') : null;
     const indented = L.x > baseX + 8;
 
+    if (section.kind === 'certs') {
+      out.certifications.push((bullet ?? t).replace(/\s+(\||–|-)\s+.*$/, '').trim());
+      continue;
+    }
     if (section.kind === 'skills') {
       const m = t.match(/^([^:]{1,40}):\s*(.*)$/);
       if (m && !indented) out.skills[lastSkill = m[1].trim()] = m[2];
@@ -172,6 +177,26 @@ export function parseResume(lines) {
         Object.assign(cur, parseDates(date));
       } else if (/^[A-Z][^:]{1,40}:/.test(t) || !cur.details.length) cur.details.push(t);
       else cur.details[cur.details.length - 1] += ' ' + t;
+    }
+  }
+  out.skillList = skillList(out.skills);
+  out.certifications = [...new Set([...out.certifications, ...certsFromBullets(out)])];
+  return out;
+}
+
+// "Python, Microsoft Office (Excel, Word), MATLAB (coursework)" -> ["Python", "Microsoft Office", "MATLAB"]
+export function skillList(skills) {
+  const all = Object.values(skills).join(', ').replace(/\([^)]*\)/g, '').split(/\s*,\s*/);
+  const seen = new Set();
+  return all.map(x => x.trim()).filter(x => x && !seen.has(x.toLowerCase()) && seen.add(x.toLowerCase()));
+}
+
+// "...earned the Example Program certificate" -> "Example Program Certificate"
+export function certsFromBullets(p) {
+  const out = [];
+  for (const e of [...p.experience, ...p.projects]) for (const b of e.bullets) {
+    for (const m of b.matchAll(/(?:earned|received|obtained|completed|awarded) (?:the |a |an |my )?([A-Z][\w&.'’ -]{1,60}?) (certificate|certification)\b/g)) {
+      out.push(`${m[1].trim()} ${m[2][0].toUpperCase()}${m[2].slice(1)}`);
     }
   }
   return out;

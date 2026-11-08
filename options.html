@@ -12,19 +12,27 @@
   h2 { font-size: 16px; margin: 0 0 8px; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-top: 16px; }
   .muted { color: var(--muted); }
-  label { display: inline-flex; gap: 6px; align-items: center; margin-right: 16px; }
-  textarea { width: 100%; box-sizing: border-box; min-height: 260px; font: 12px/1.4 ui-monospace, Consolas, monospace; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+  .radio { display: inline-flex; gap: 6px; align-items: center; margin-right: 16px; }
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px 16px; }
+  .grid label, .q label { display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--muted); }
+  .q { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 8px 16px; align-items: center; }
+  .q > span { font-size: 13px; }
+  input[type=text], select, textarea { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; width: 100%; box-sizing: border-box; }
+  textarea { min-height: 90px; }
+  textarea.json { min-height: 260px; font: 12px/1.4 ui-monospace, Consolas, monospace; }
   input[type=number] { width: 56px; }
   button { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 7px 14px; font: inherit; cursor: pointer; margin-top: 8px; }
-  .status { margin-left: 8px; }
+  .status { margin-left: 8px; font-size: 13px; }
   .ok { color: var(--ok); } .err { color: var(--err); }
   .row { margin-top: 8px; }
+  summary { cursor: pointer; font-weight: 600; }
+  @media (max-width: 560px) { .grid, .q { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
 <main>
   <h1>Job Application Autofill</h1>
-  <p class="muted">Click the extension icon (or Alt+Shift+F) on an application page. On Workday it fills each page, clicks Save and Continue, and stops at Review. You submit yourself.</p>
+  <p class="muted">Click the extension icon (or Alt+Shift+F) on an application page. On Workday it fills each page, clicks Save and Continue, and stops at Review. You submit yourself. Changes here save automatically. <span id="saved" class="status ok"></span></p>
 
   <section class="card">
     <h2>1. Main resume (full)</h2>
@@ -34,27 +42,55 @@
 
   <section class="card">
     <h2>2. Upload a different resume for applications?</h2>
-    <label><input type="radio" name="useTailored" value="no"> No, attach and fill the main resume</label>
-    <label><input type="radio" name="useTailored" value="yes"> Yes</label>
+    <label class="radio"><input type="radio" name="useTailored" value="no"> No, attach and fill the main resume</label>
+    <label class="radio"><input type="radio" name="useTailored" value="yes"> Yes</label>
     <div id="tailoredBox" hidden>
       <div class="row"><input type="file" id="tailoredFile" accept="application/pdf"></div>
       <div class="row muted" id="tailoredInfo">No tailored resume yet.</div>
-      <div class="row"><label>Extra bullets per entry from the main resume <input type="number" id="extra" min="0" max="10" value="2"></label></div>
+      <div class="row"><label class="radio">Extra bullets per entry from the main resume <input type="number" id="extra" min="0" max="10" value="2"></label></div>
     </div>
   </section>
 
   <section class="card">
-    <h2>3. What gets filled</h2>
-    <p class="muted">Edit anything the parser got wrong, and add your street address and ZIP (not on your resume). Uploading a PDF or changing step 2 rebuilds this from the PDFs; your address is kept.</p>
-    <textarea id="profile" spellcheck="false"></textarea>
-    <button id="saveProfile">Save</button><span class="status" id="profileStatus"></span>
+    <h2>3. Address and phone</h2>
+    <div class="grid">
+      <label>Address line 1<input type="text" data-addr="line1" autocomplete="address-line1"></label>
+      <label>Address line 2<input type="text" data-addr="line2" autocomplete="address-line2"></label>
+      <label>City<input type="text" data-addr="city" autocomplete="address-level2"></label>
+      <label>State<input type="text" data-addr="state" autocomplete="address-level1" placeholder="NY or New York"></label>
+      <label>Postal code<input type="text" data-addr="postal" autocomplete="postal-code"></label>
+      <label>Country<input type="text" data-addr="country" autocomplete="country-name"></label>
+      <label>Phone device type<select data-qa="phoneType"><option>Mobile</option><option>Landline</option></select></label>
+    </div>
   </section>
 
   <section class="card">
-    <h2>4. Question answers</h2>
-    <p class="muted">Each entry: <code>q</code> is a pattern matched against the question text, <code>a</code> is a pattern matched against the answer options (or typed into text boxes). Empty <code>a</code> means "leave it for me" and the question is highlighted in yellow. Fill in work authorization and sponsorship yourself.</p>
-    <textarea id="answers" spellcheck="false"></textarea>
-    <button id="saveAnswers">Save</button><span class="status" id="answersStatus"></span>
+    <h2>4. Application questions</h2>
+    <p class="muted">"Leave for me" means the question gets a yellow outline so you answer it yourself.</p>
+    <div class="q" id="questions"></div>
+    <div class="row">
+      <label class="muted" for="custom">Other questions, one per line as <code>words in the question = answer</code> (e.g. <code>favorite color = Blue</code>)</label>
+      <textarea id="custom" data-qa="custom" spellcheck="false"></textarea>
+    </div>
+    <p class="muted">Also answered from your resume automatically: GPA, graduation date, school, major, degree level, currently enrolled, LinkedIn/GitHub/website.</p>
+  </section>
+
+  <section class="card">
+    <h2>5. Skills and certifications</h2>
+    <p class="muted">Taken from your resume. Workday only accepts skills from its own list, so ones it doesn't recognize are skipped.</p>
+    <div class="grid">
+      <label>Skills (comma separated)<textarea id="skills" spellcheck="false"></textarea></label>
+      <label>Certifications (one per line)<textarea id="certs" spellcheck="false"></textarea></label>
+    </div>
+  </section>
+
+  <section class="card">
+    <details>
+      <summary>Advanced: everything parsed from the resume</summary>
+      <p class="muted">Fix anything the parser got wrong (titles, dates, bullets) and Save. Uploading a PDF or changing step 2 rebuilds this.</p>
+      <textarea class="json" id="profile" spellcheck="false"></textarea>
+      <button id="saveProfile">Save</button><span class="status" id="profileStatus"></span>
+    </details>
   </section>
 </main>
 <script type="module" src="options.js"></script>

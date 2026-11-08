@@ -1,1 +1,2 @@
-tests/*.local.js
+tests/*.local.*
+graphify-out/

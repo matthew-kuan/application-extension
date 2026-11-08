@@ -24,27 +24,31 @@
 const SAMPLE = {
   profile: {
     name: { first: 'Jane', last: 'Doe', full: 'Jane Doe' }, email: 'jane@example.edu', phone: '(555) 123-4567',
-    address: { line1: '1 Main St', city: 'Stony Brook', state: 'NY', postal: '11790', country: 'United States of America' },
+    address: { line1: '1 Main St', city: 'Springfield', state: 'IL', postal: '62701', country: 'United States of America' },
     links: { linkedin: 'linkedin.com/in/jane', github: 'github.com/jane', portfolio: '' },
-    education: [{ school: 'Stony Brook University', location: 'Stony Brook, NY', degree: 'B.E. Biomedical Engineering, B.S. Applied Math', gpa: '3.7', start: null, end: { month: 5, year: 2028 }, current: false, details: [] }],
+    education: [{ school: 'State University', location: 'Springfield, IL', degree: 'B.S. Computer Science, B.A. Applied Math', gpa: '3.7', start: null, end: { month: 5, year: 2028 }, current: false, details: [] }],
     skills: {},
     experience: [
-      { section: 'Research Experience', title: 'Research Assistant', org: 'Lab A', location: 'Stony Brook, NY', start: { month: 8, year: 2025 }, end: null, current: true, bullets: ['Built devices', 'Ran tests'] },
+      { section: 'Research Experience', title: 'Research Assistant', org: 'Lab A', location: 'Springfield, IL', start: { month: 8, year: 2025 }, end: null, current: true, bullets: ['Built devices', 'Ran tests'] },
       { section: 'Professional Experience', title: 'Intern', org: 'Company B', location: 'New York, NY', start: { month: 7, year: 2026 }, end: { month: 8, year: 2026 }, current: false, bullets: ['Did work'] },
     ],
     projects: [
-      { name: 'Iris: Smart Glasses', tech: 'Python, FastAPI', recognition: 'MHacks 2026', start: { month: 10, year: 2026 }, end: { month: 10, year: 2026 }, current: false, bullets: ['Built the brain'] },
+      { name: 'Widget: Demo App', tech: 'Python, FastAPI', recognition: 'Example Hackathon', start: { month: 10, year: 2026 }, end: { month: 10, year: 2026 }, current: false, bullets: ['Built the brain'] },
       { name: 'Undated Project', tech: 'Go', recognition: '', start: null, end: null, current: false, bullets: ['Thing'] },
     ],
   },
-  answers: [
-    { q: 'authori[sz]ed to work', a: '^yes' }, { q: 'sponsor', a: '^no' }, { q: 'how did you hear', a: 'LinkedIn' },
-    { q: 'previously (worked|been employed)', a: '^no' }, { q: 'phone device type', a: 'mobile' },
-    { q: 'gender', a: 'decline' }, { q: 'race|ethnic', a: 'decline' }, { q: 'veteran', a: 'decline' }, { q: 'disability', a: 'do not want' },
-  ],
+  address: { line1: '1 Main St', line2: 'Apt 2', city: 'Springfield', state: 'IL', postal: '62701' },
   fullPdf: { name: 'resume.pdf', b64: btoa('%PDF-1.4 fake') }, useTailored: false,
 };
-window.chrome = { storage: { local: { get: async () => window.MOCK_STORE || SAMPLE } } };
+SAMPLE.profile.address = { line1: '', line2: '', city: 'Springfield', state: 'IL', postal: '', country: 'United States of America' };
+SAMPLE.profile.skillList = ['Python', 'JavaScript', 'LabVIEW', 'Docker'];
+SAMPLE.profile.certifications = ['Example Program Certificate'];
+// answers built exactly like the settings page does
+const ready = import('../answers.js').then(m => {
+  SAMPLE.qa = { ...m.DEFAULT_QA, auth: 'Yes', sponsor: 'No' };
+  SAMPLE.answers = m.buildAnswers(SAMPLE.qa);
+});
+window.chrome = { storage: { local: { get: async () => { await ready; return window.MOCK_STORE || SAMPLE; } } } };
 
 const STEPS = ['start', 'My Information', 'My Experience', 'Application Questions', 'Voluntary Disclosures', 'Self Identify', 'Review'];
 const PAGE_IDS = { 'My Information': 'applyFlowMyInfoPage', 'My Experience': 'applyFlowMyExpPage', 'Application Questions': 'applyFlowPrimaryQuestionsPage',
@@ -62,40 +66,46 @@ function prompt(id, label, opts) {
 function date(id, label, day = false) {
   return `<label>${label}</label><input id="${id}-dateSectionMonth-input" size="2">${day ? `<input id="${id}-dateSectionDay-input" size="2">` : ''}<input id="${id}-dateSectionYear-input" size="4">`;
 }
+// Experience-page fields use ids the filler doesn't know, so only the label lookup can find them.
 let n = 0;
+const uid = () => 'wd' + Math.random().toString(36).slice(2, 8);
+const lbl = (label, tag = 'input') => { const id = uid(); return `<div><label for="${id}">${label}</label><${tag} id="${id}"${tag === 'textarea' ? '></textarea>' : '>'}</div>`; };
+const mmyy = (label, month = true) => `<div class="date"><label>${label}</label><div>${month ? '<input aria-label="Month" placeholder="MM" size="2">' : ''}<input aria-label="Year" placeholder="YYYY" size="4"></div></div>`;
 const PANELS = {
   'Work Experience': i => `<div class="panel"><h4>Work Experience ${i}</h4><button type="button" class="del">Delete</button>
-    <label for="workExperience-${i}--jobTitle">Job Title</label><input id="workExperience-${i}--jobTitle">
-    <label for="workExperience-${i}--companyName">Company</label><input id="workExperience-${i}--companyName">
-    <label for="workExperience-${i}--location">Location</label><input id="workExperience-${i}--location">
-    <label><input type="checkbox" id="workExperience-${i}--currentlyWorkHere"> I currently work here</label>
-    ${date(`workExperience-${i}--startDate`, 'From')} ${date(`workExperience-${i}--endDate`, 'To')}
-    <label for="workExperience-${i}--roleDescription">Role Description</label><textarea id="workExperience-${i}--roleDescription"></textarea></div>`,
-  'Education': i => `<div class="panel"><h4>Education ${i}</h4><button type="button" class="del">Delete</button>
-    <label for="education-${i}--schoolName">School</label><input id="education-${i}--schoolName">
-    ${dropdown(`education-${i}--degree`, 'Degree', ['High School Diploma', 'Associate Degree', 'Bachelor of Arts (BA)', 'Bachelor of Science (BS)', 'Master of Science (MS)'])}
-    ${prompt(`education-${i}--fieldOfStudy`, 'Field of Study', ['Biology', 'Biomedical Engineering', 'Computer Science'])}
-    <label for="education-${i}--gradeAverage">Overall Result (GPA)</label><input id="education-${i}--gradeAverage">
-    ${date(`education-${i}--firstYearAttended`, 'From')} ${date(`education-${i}--lastYearAttended`, 'To')}</div>`,
-  'Websites': i => `<div class="panel"><h4>Websites ${i}</h4><button type="button" class="del">Delete</button><label for="webAddress-${i}--url">URL</label><input id="webAddress-${i}--url"></div>`,
+    ${lbl('Job Title*')}${lbl('Company*')}${lbl('Location')}
+    <div><input type="checkbox" id="cw${i}"><label for="cw${i}">I currently work here</label></div>
+    ${mmyy('From*')}${mmyy('To*')}${lbl('Role Description', 'textarea')}</div>`,
+  'Education': i => { const a = uid(), b = uid(); return `<div class="panel"><h4>Education ${i}</h4><button type="button" class="del">Delete</button>
+    ${lbl('School or University*')}
+    ${dropdown(a, 'Degree*', ['High School Diploma', 'Associate Degree', "Bachelor's Degree", "Master's Degree"])}
+    ${prompt(b, 'Field of Study', ['Biology', 'Computer Science', 'Applied Mathematics'])}
+    ${lbl('Overall Result (GPA)')}${mmyy('From', false)}${mmyy('To (Actual or Expected)', false)}</div>`; },
+  'Certifications': i => `<div class="panel"><h4>Certifications ${i}</h4><button type="button" class="del">Delete</button>
+    ${prompt(uid(), 'Certification', ['AWS Certified Cloud Practitioner', 'Example Program Certificate'])}</div>`,
+  'Websites': i => `<div class="panel"><h4>Websites ${i}</h4><button type="button" class="del">Delete</button>${lbl('URL*')}</div>`,
 };
 const section = (title, pre = 0) => `<div role="group"><h3>${title}</h3><div class="panels">${Array.from({ length: pre }, () => PANELS[title](++n)).join('')}</div><button type="button" class="add" data-sec="${title}">${pre ? 'Add Another' : 'Add'}</button></div>`;
+const SOURCES = { 'Job Sites': ['LinkedIn', 'Indeed', 'Handshake'], 'Career Website': [], 'Referral': [] };
 
 const PAGES = {
   'My Information': () => `
     <label for="name--legalName--firstName">First Name</label><input id="name--legalName--firstName" aria-required="true">
     <label for="name--legalName--lastName">Last Name</label><input id="name--legalName--lastName" aria-required="true">
     <label for="address--addressLine1">Address Line 1</label><input id="address--addressLine1" aria-required="true">
+    <label for="address--addressLine2">Address Line 2</label><input id="address--addressLine2">
     <label for="address--city">City</label><input id="address--city">
-    ${dropdown('address--countryRegion', 'State', ['Nevada', 'New Jersey', 'New York', 'North Carolina'])}
+    ${dropdown('address--countryRegion', 'State', ['Idaho', 'Illinois', 'Indiana', 'Iowa'])}
     <label for="address--postalCode">Postal Code</label><input id="address--postalCode">
     <label for="emailAddress--emailAddress">Email</label><input id="emailAddress--emailAddress" value="prefilled@account.com">
     ${dropdown('phoneNumber--phoneType', 'Phone Device Type', ['Landline', 'Mobile'])}
     <label for="phoneNumber--phoneNumber">Phone Number</label><input id="phoneNumber--phoneNumber" aria-required="true">
     <fieldset><legend>Have you previously worked for Acme?</legend><label><input type="radio" name="prev" id="prevY" value="Yes"> Yes</label><label><input type="radio" name="prev" id="prevN" value="No"> No</label></fieldset>
-    ${prompt('source--source', 'How Did You Hear About Us?', ['Company Website', 'LinkedIn', 'Indeed'])}`,
+    <label for="source--source">How Did You Hear About Us?</label><div data-automation-id="multiSelectContainer"><input id="source--source" data-automation-id="searchBox" aria-required="true" data-tree="1"></div>`,
   'My Experience': () => `<input type="file" data-automation-id="file-upload-input-ref">
-    ${section('Work Experience', 1)}${section('Education', 1)}${section('Websites')}`,
+    ${section('Work Experience', 1)}${section('Education', 1)}${section('Certifications')}
+    <div><h3>Skills</h3><label for="sk">Type to Add Skills</label><ul id="pills"></ul><div data-automation-id="multiSelectContainer"><input id="sk" data-automation-id="searchBox" data-opts="Python|Java|JavaScript|React|SQL|AutoCAD|Docker"></div></div>
+    ${section('Websites')}`,
   'Application Questions': () => `${dropdown('q1', 'Are you legally authorized to work in the United States?', ['Yes', 'No'])}
     ${dropdown('q2', 'Will you now or in the future require sponsorship for employment visa status?', ['Yes', 'No'])}
     ${dropdown('q3', 'What is your favorite color?', ['Red', 'Blue'])}`,
@@ -122,7 +132,7 @@ function validate() {
   const req = (sel, name) => { const el = app.querySelector(sel); if (!el || !(el.value || '').trim()) errs.push(name); };
   const dd = (id) => { const b = document.getElementById(id); if (b && b.textContent === 'Select One') errs.push(id); };
   if (s === 'My Information') { req('#address--addressLine1', 'Address'); req('#phoneNumber--phoneNumber', 'Phone'); dd('address--countryRegion'); dd('phoneNumber--phoneType'); req('#source--source', 'Source'); if (!app.querySelector('[name=prev]:checked')) errs.push('Previous worker'); }
-  if (s === 'My Experience') app.querySelectorAll('[id$="--jobTitle"]').forEach(t => { if (!app.querySelector(`#${t.id.replace('jobTitle', 'startDate-dateSectionYear-input')}`).value) errs.push(t.id + ' from date'); });
+  if (s === 'My Experience') app.querySelector('[role=group]').querySelectorAll('.panel').forEach((p, i) => { if (!p.querySelector('.date [aria-label=Year]').value) errs.push(`job ${i + 1} from date`); });
   if (s === 'Application Questions') { dd('q1'); dd('q2'); }
   if (s === 'Voluntary Disclosures' && !document.getElementById('terms').checked) errs.push('Terms');
   if (s === 'Self Identify') req('#selfIdentifiedDisabilityData--name', 'Name');
@@ -151,18 +161,35 @@ document.addEventListener('click', e => {
     document.body.appendChild(ul);
   }
 });
+// Searchable prompts. The "How did you hear" one is a two-level menu whose search only sees the top level.
+function showList(t, items, onPick) {
+  document.querySelectorAll('[role=listbox]').forEach(l => l.remove());
+  const r = t.getBoundingClientRect();
+  const ul = document.createElement('ul');
+  ul.setAttribute('role', 'listbox');
+  ul.style.cssText = `left:${r.left + scrollX}px;top:${r.bottom + scrollY}px`;
+  ul.innerHTML = items.map(o => `<li data-automation-id="promptOption" role="option">${o}</li>`).join('');
+  ul.onclick = ev => { if (ev.target.matches('[role=option]')) { ul.remove(); onPick(ev.target.textContent); } };
+  document.body.appendChild(ul);
+}
+function pickTree(t, item) {
+  if (SOURCES[item]?.length) return showList(t, SOURCES[item], leaf => (t.value = `${item} > ${leaf}`));
+  t.value = item;
+}
+function pickPlain(t, item) {
+  if (t.id === 'sk') { document.getElementById('pills').insertAdjacentHTML('beforeend', `<li data-automation-id="selectedItem">${item}</li>`); t.value = ''; return; }
+  t.value = item;
+}
 document.addEventListener('keydown', e => {
   const t = e.target;
-  if (e.key === 'Enter' && t.matches('[data-automation-id=searchBox]')) {
-    document.querySelectorAll('[role=listbox]').forEach(l => l.remove());
-    const r = t.getBoundingClientRect();
-    const ul = document.createElement('ul');
-    ul.setAttribute('role', 'listbox');
-    ul.style.cssText = `left:${r.left + scrollX}px;top:${r.bottom + scrollY}px`;
-    ul.innerHTML = t.dataset.opts.split('|').filter(o => o.toLowerCase().includes(t.value.toLowerCase())).map(o => `<li data-automation-id="promptOption" role="option">${o}</li>`).join('');
-    ul.onclick = ev => { if (ev.target.matches('[role=option]')) { t.value = ev.target.textContent; ul.remove(); } };
-    document.body.appendChild(ul);
-  }
+  if (e.key !== 'Enter' || !t.matches('[data-automation-id=searchBox]')) return;
+  const q = t.value.toLowerCase();
+  if (t.dataset.tree) showList(t, Object.keys(SOURCES).filter(o => o.toLowerCase().includes(q)), item => pickTree(t, item));
+  else showList(t, t.dataset.opts.split('|').filter(o => o.toLowerCase().includes(q)), item => pickPlain(t, item));
+});
+document.addEventListener('click', e => {
+  const t = e.target;
+  if (t.matches('[data-tree]') && !t.value) showList(t, Object.keys(SOURCES), item => pickTree(t, item));
 });
 
 function inject(src) { return new Promise(r => { const s = document.createElement('script'); s.src = src + '?' + Date.now(); s.onload = r; document.body.appendChild(s); }); }

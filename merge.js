@@ -32,6 +32,8 @@ export function mergeProfiles(tailored, full, n = 2) {
     addExtra(out.experience, full.experience, sameExp, n);
     addExtra(out.projects, full.projects, sameProj, n);
   }
+  if (!out.skillList?.length) out.skillList = full.skillList || [];
+  out.certifications = [...new Set([...(out.certifications || []), ...(full.certifications || [])])];
   // contact info missing from a trimmed resume falls back to the full one
   for (const k of ['email', 'phone']) out[k] ||= full[k];
   for (const grp of ['name', 'address', 'links']) for (const k in full[grp]) out[grp][k] ||= full[grp][k];
